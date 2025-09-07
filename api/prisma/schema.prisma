@@ -1,0 +1,474 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// Enums
+enum Role {
+  ADMIN
+  FLEET_MANAGER
+  MANAGER
+  SUPERVISOR
+  MECHANIC
+  DRIVER
+  SECURITY
+}
+
+enum TruckStatus {
+  ACTIVE
+  IN_SERVICE
+  OUT_OF_SERVICE
+  RETIRED
+  DECOMMISSIONED
+}
+
+enum WorkOrderStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
+  CANCELED
+}
+
+enum Severity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum InspectionType {
+  PRE_TRIP
+  POST_TRIP
+}
+
+enum InspectionStatus {
+  PASS
+  FAIL
+}
+
+enum SecurityAction {
+  OUTBOUND_CHECK
+  INBOUND_CHECK
+  PARKING_ASSIGNMENT
+}
+
+enum SpotType {
+  SMALL
+  MEDIUM
+  LARGE
+  XL
+}
+
+enum SignalType {
+  ODOMETER
+  RPM
+  FUEL_LEVEL
+  SPEED
+  GPS
+  DTC
+  ENGINE_TEMP
+  VIN
+}
+
+enum TripEventType {
+  ENTRY
+  EXIT
+  HARD_BRAKE
+  ACCELERATION
+  IDLE
+}
+
+// Hours of Service (HOS)
+enum DutyState {
+  OFF_DUTY
+  SLEEPER_BERTH
+  ON_DUTY
+  DRIVING
+}
+
+// ALPR related enums
+
+// Core models
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  role         Role
+  passwordHash String
+  isActive     Boolean  @default(true)
+  depotId      String?
+  depot        Depot?   @relation(fields: [depotId], references: [id])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  workOrders   WorkOrder[] @relation("MechanicWorkOrders")
+  auditLogs    AuditLog[]
+  gateEvents   GateEvent[]
+  passwordResets PasswordReset[]
+}
+
+model PasswordReset {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  token     String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+}
+
+model Depot {
+  id      String @id @default(uuid())
+  name    String
+  code    String @unique
+  address String
+
+  trucks       Truck[]
+  parkingSpots ParkingSpot[]
+  users        User[]
+}
+
+model ParkingSpot {
+  id         String @id @default(uuid())
+  spotNumber String
+  depotId    String
+  depot      Depot  @relation(fields: [depotId], references: [id], onDelete: Cascade)
+  truck      Truck? @relation("TruckCurrentSpot")
+  gateEvents GateEvent[]
+  spotType   SpotType @default(MEDIUM)
+  lengthCm   Int?
+  widthCm    Int?
+  heightCm   Int?
+  maxWeightKg Int?
+  isCovered  Boolean? @default(false)
+  hasCharger Boolean? @default(false)
+
+  @@unique([depotId, spotNumber])
+}
+
+model Truck {
+  id                   String       @id @default(uuid())
+  name                 String?
+  vin                  String       @unique
+  plate                String       @unique
+  year                 Int
+  colorTag             String
+  barcode              String       @unique
+  status               TruckStatus  @default(ACTIVE)
+  depotId              String
+  depot                Depot        @relation(fields: [depotId], references: [id])
+  currentParkingSpotId String?      @unique
+  currentParkingSpot   ParkingSpot? @relation("TruckCurrentSpot", fields: [currentParkingSpotId], references: [id])
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  routes            Route[]
+  maintenanceLogs   MaintenanceLog[]
+  workOrders        WorkOrder[]
+  serviceSchedules  ServiceSchedule[]
+  alerts            Alert[]
+  attachments       Attachment[]
+  documents         Document[]
+  gateEvents        GateEvent[]
+  inspections       DriverInspection[] @relation("TruckToInspections")
+  lastInspectionId  String? @unique
+  lastInspection    DriverInspection? @relation("TruckToLastInspection", fields: [lastInspectionId], references: [id])
+  lengthCm          Int?
+  widthCm           Int?
+  heightCm          Int?
+  weightKg          Int?
+  requiresCharger   Boolean? @default(false)
+  isLocked          Boolean   @default(false)
+  currentDriverId   String?
+  currentDriver     Driver?   @relation(fields: [currentDriverId], references: [id])
+  devices           Device[]
+  telemetry         TelemetryRaw[]
+  signals           VehicleSignal[]
+  tripEvents        TripEvent[]
+  // Complaints
+  complaints        Complaint[]
+  // HOS back-relations
+  dutyEvents        DutyEvent[]
+  driverStatuses    DriverStatus[]
+}
+
+model Driver {
+  id             String   @id @default(uuid())
+  name           String
+  phone          String?
+  licenseNumber  String?
+  licenseExpiry  DateTime?
+
+  routes Route[]
+  documents Document[]
+  inspections DriverInspection[]
+  currentTrucks Truck[]
+  complaints   Complaint[]
+
+  // HOS
+  dutyEvents  DutyEvent[]
+  hosStatus   DriverStatus?
+}
+
+model Device {
+  id          String   @id @default(uuid())
+  name        String?
+  secret      String   @unique
+  truckId     String?
+  truck       Truck?   @relation(fields: [truckId], references: [id])
+  status      String   @default("ACTIVE")
+  lastSeenAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  telemetry   TelemetryRaw[]
+  signals     VehicleSignal[]
+  tripEvents  TripEvent[]
+}
+
+model TelemetryRaw {
+  id         String   @id @default(uuid())
+  deviceId   String
+  device     Device   @relation(fields: [deviceId], references: [id])
+  truckId    String?
+  truck      Truck?   @relation(fields: [truckId], references: [id])
+  receivedAt DateTime @default(now())
+  payload    Json
+}
+
+model VehicleSignal {
+  id        String     @id @default(uuid())
+  deviceId  String
+  device    Device     @relation(fields: [deviceId], references: [id])
+  truckId   String
+  truck     Truck      @relation(fields: [truckId], references: [id])
+  type      SignalType
+  value     Json
+  ts        DateTime   @default(now())
+}
+
+model TripEvent {
+  id        String        @id @default(uuid())
+  deviceId  String?
+  device    Device?       @relation(fields: [deviceId], references: [id])
+  truckId   String
+  truck     Truck         @relation(fields: [truckId], references: [id])
+  type      TripEventType
+  details   Json?
+  ts        DateTime      @default(now())
+}
+
+// HOS models
+model DutyEvent {
+  id         String     @id @default(uuid())
+  driverId   String
+  driver     Driver     @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  truckId    String?
+  truck      Truck?     @relation(fields: [truckId], references: [id])
+  state      DutyState
+  startedAt  DateTime   @default(now())
+  endedAt    DateTime?
+  source     String     @default("manual") // manual | device | inferred
+  reasonCode String?
+  note       String?
+  createdAt  DateTime   @default(now())
+
+  @@index([driverId, startedAt])
+  @@index([driverId, state, startedAt])
+}
+
+model DriverStatus {
+  id        String    @id @default(uuid())
+  driverId  String   @unique
+  driver    Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  state     DutyState
+  since     DateTime  @default(now())
+  truckId   String?
+  truck     Truck?    @relation(fields: [truckId], references: [id])
+  updatedAt DateTime  @updatedAt
+}
+
+model Route {
+  id          String    @id @default(uuid())
+  truckId     String
+  driverId    String?
+  startPoint  String
+  stops       Json?
+  destination String
+  mileage     Decimal?
+  fuelUsage   Decimal?
+  routeDate   DateTime  @default(now())
+
+  truck  Truck  @relation(fields: [truckId], references: [id], onDelete: Cascade)
+  driver Driver? @relation(fields: [driverId], references: [id])
+
+  @@index([truckId])
+  @@index([driverId])
+}
+
+model MaintenanceLog {
+  id               String    @id @default(uuid())
+  truckId          String
+  date             DateTime
+  type             String
+  cost             Decimal?
+  notes            String?
+  nextServiceDate  DateTime?
+  workOrderId      String?
+
+  truck     Truck     @relation(fields: [truckId], references: [id], onDelete: Cascade)
+  workOrder WorkOrder? @relation(fields: [workOrderId], references: [id])
+
+  @@index([truckId])
+}
+
+model WorkOrder {
+  id          String          @id @default(uuid())
+  truckId     String
+  mechanicId  String?
+  status      WorkOrderStatus @default(OPEN)
+  openedAt    DateTime        @default(now())
+  closedAt    DateTime?
+
+  truck    Truck @relation(fields: [truckId], references: [id], onDelete: Cascade)
+  mechanic User? @relation("MechanicWorkOrders", fields: [mechanicId], references: [id])
+
+  maintenanceLogs MaintenanceLog[]
+}
+
+model ServiceSchedule {
+  id               String   @id @default(uuid())
+  truckId          String
+  frequencyMiles   Int?
+  frequencyDays    Int?
+  lastOdometer     Int?
+  lastServiceDate  DateTime?
+  nextServiceDate  DateTime?
+
+  truck Truck @relation(fields: [truckId], references: [id], onDelete: Cascade)
+
+  @@unique([truckId])
+}
+
+model Alert {
+  id        String    @id @default(uuid())
+  truckId   String
+  type      String
+  message   String
+  severity  Severity  @default(INFO)
+  isRead    Boolean   @default(false)
+  createdAt DateTime  @default(now())
+
+  truck Truck @relation(fields: [truckId], references: [id], onDelete: Cascade)
+
+  @@index([truckId])
+}
+
+// Driver maintenance complaints
+model Complaint {
+  id          String   @id @default(uuid())
+  truckId     String
+  driverId    String
+  type        String   // mechanical | safety | comfort | other
+  description String
+  resolved    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  truck   Truck  @relation(fields: [truckId], references: [id], onDelete: Cascade)
+  driver  Driver @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([truckId, resolved, createdAt])
+}
+
+model Attachment {
+  id           String   @id @default(uuid())
+  truckId      String?
+  entityType   String
+  entityId     String
+  fileName     String
+  fileUrl      String
+  contentType  String?
+  sizeBytes    Int?
+  createdAt    DateTime @default(now())
+
+  truck Truck? @relation(fields: [truckId], references: [id])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  action     String
+  entityType String
+  entityId   String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+  @@index([userId])
+}
+
+// New models for documents and gate events
+model Document {
+  id           String   @id @default(uuid())
+  truckId      String?
+  driverId     String?
+  type         String
+  docNumber    String?
+  issuedDate   DateTime?
+  expiryDate   DateTime?
+  createdAt    DateTime @default(now())
+
+  truck      Truck?    @relation(fields: [truckId], references: [id], onDelete: SetNull)
+  driver     Driver?   @relation(fields: [driverId], references: [id], onDelete: SetNull)
+
+  @@index([truckId])
+  @@index([driverId])
+  @@index([expiryDate])
+}
+
+model DriverInspection {
+  id              String           @id @default(uuid())
+  driverId        String
+  truckId         String
+  inspectionType  InspectionType
+  status          InspectionStatus
+  notes           String?
+  createdAt       DateTime         @default(now())
+  answersJson     Json?
+
+  driver          Driver           @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  truck           Truck            @relation("TruckToInspections", fields: [truckId], references: [id], onDelete: Cascade)
+  isLastForTruck  Truck?           @relation("TruckToLastInspection")
+
+  @@index([truckId, createdAt])
+  @@index([driverId, createdAt])
+}
+
+model GateEvent {
+  id         String   @id @default(uuid())
+  truckId    String
+  action     SecurityAction
+  timestamp  DateTime @default(now())
+  recordedBy String?  // userId
+  notes      String?
+  parkingSpotId String?
+
+  truck Truck @relation(fields: [truckId], references: [id], onDelete: Cascade)
+  user  User?  @relation(fields: [recordedBy], references: [id])
+  parkingSpot  ParkingSpot? @relation(fields: [parkingSpotId], references: [id])
+
+  @@index([truckId])
+  @@index([timestamp])
+}
+
+// ALPR plate scans
