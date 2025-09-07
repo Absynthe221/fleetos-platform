@@ -1,0 +1,6 @@
+{
+  "name": "fleet-management",
+  "private": true,
+  "workspaces": ["backend", "frontend"],
+  "license": "MIT"
+}

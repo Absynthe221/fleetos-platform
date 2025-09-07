@@ -1,0 +1,74 @@
+@import "tailwindcss";
+
+:root {
+  /* brand */
+  --brand: #2563EB;
+  --brand-700: #1D4ED8;
+  --brand-100: #DBEAFE;
+
+  /* surface */
+  --background: #ffffff;
+  --foreground: #0f172a; /* slate-900 */
+  --muted: #64748b; /* slate-500 */
+  --border: #e2e8f0; /* slate-200 */
+
+  /* status */
+  --ok: #16A34A;
+  --due: #EAB308;
+  --alert: #DC2626;
+  --idle: #9CA3AF;
+
+  /* radii */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-2xl: 16px;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-brand: var(--brand);
+  --color-brand-700: var(--brand-700);
+  --color-brand-100: var(--brand-100);
+  --color-status-ok: var(--ok);
+  --color-status-due: var(--due);
+  --color-status-alert: var(--alert);
+  --color-status-idle: var(--idle);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: var(--r-2xl);
+  background: white;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.badge-ok { background: color-mix(in srgb, var(--color-status-ok) 10%, white); color: var(--color-status-ok); }
+.badge-due { background: color-mix(in srgb, var(--color-status-due) 10%, white); color: var(--color-status-due); }
+.badge-alert { background: color-mix(in srgb, var(--color-status-alert) 10%, white); color: var(--color-status-alert); }
+.badge-idle { background: color-mix(in srgb, var(--color-status-idle) 10%, white); color: var(--color-status-idle); }
